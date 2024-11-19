@@ -1,5 +1,6 @@
 // required dom elements
 const buttonEl = document.getElementById("button");
+const listInputsButtonEl = document.getElementById("listInputsButton");
 const messageEl = document.getElementById("message");
 const titleEl = document.getElementById("real-time-title");
 
@@ -15,14 +16,33 @@ function createMicrophone() {
   let audioWorkletNode;
   let source;
   let audioBufferQueue = new Int16Array(0);
-  return {
+  return {   
+    // Modify requestPermission to be more specific:
     async requestPermission() {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter(device => device.kind === 'audioinput');
+      console.log('Available audio inputs:', audioInputs);
+      
+      // 'default' will select the default audio input device
+      // could replace this with a list of supported loopback drivers
+      // (e.g. BlackHole, Loopback, Background Music, etc.)
+      const constraints = {
+        audio: {
+          deviceId: { ideal: 'default' }
+        }
+      };
+      
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log("audio stream acquired:", stream.getTracks()[0].label);
     },
+
     async startRecording(onAudioCallback) {
-      if (!stream) stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!stream) {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log("audio stream acquired in the weird path:", stream.getTracks()[0].label);
+      }
       audioContext = new AudioContext({
-        sampleRate: 16_000,
+        sampleRate: 48_000,
         latencyHint: 'balanced'
       });
       source = audioContext.createMediaStreamSource(stream);
@@ -97,6 +117,7 @@ const run = async () => {
     // handle incoming messages to display transcription to the DOM
     const texts = {};
     rt.on("transcript", (message) => {
+      console.log("received transcript from server", message);
       let msg = "";
       texts[message.audio_start] = message.text;
       const keys = Object.keys(texts);
@@ -124,6 +145,7 @@ const run = async () => {
     messageEl.style.display = "";
 
     await microphone.startRecording((audioData) => {
+      console.log("sending audio data to server", audioData);
       rt.sendAudio(audioData);
     });
   }
@@ -137,3 +159,7 @@ const run = async () => {
 
 buttonEl.addEventListener("click", () => run());
 
+listInputsButtonEl.addEventListener("click", () => {
+  microphone = createMicrophone();
+  microphone.requestPermission();
+});
